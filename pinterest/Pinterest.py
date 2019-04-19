@@ -578,8 +578,25 @@ class Pinterest:
                     'id': result['id'],
                     'description': result['description'],
                     'img': result['images']['orig']['url'],
+                    'like_count': result['like_count'],
+                    'comment_count': result['comment_count'],
+                    'repin_count': result['repin_count'],
+                    'liked_by_me': result['liked_by_me'],
                     'link': result['link'],
                     'title': result['title'],
+                    'is_video': result['is_video'],
+                    'board': {
+                        'id': result['board']['id'],
+                        'name': result['board']['name'],
+                        'url': result['board']['url'],
+                        'privacy': result['board']['privacy'],
+                        'followed_by_me': result['board']['followed_by_me'],
+                        'owner': {'id': result['board']['owner']['id']},
+                    },
+                    'pinner': {
+                        'id': result['pinner']['id'],
+                        'username': result['pinner']['username'],
+                    }
                 })
         return pins
 
