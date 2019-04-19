@@ -1,3 +1,36 @@
+## pinterest-client modifications 2019-04-19
+
+Motivation:
+
+For me, it is not very convenient the way the Pinterest application shows the pins in mobile devices. The great feature of starting a visual search when you makes a zoom in an image, turns to be a bit unpleasant when you try to observe the image in detail. Also moving from one pin to another, sometimes, is not as comfortable as I would expect (specially browsing own pins).
+
+I started to search the way to download all pins in a board and several options arise. I found pinterest-client with lot of functionalities, very interesting, in Python, easy to use... in fact a very good tool.
+
+Even so the possibility of downloading all pins in a board was not possible. Also, it was not possible to use sections. So I decided to add some extra functionalities to this package.
+
+I would like to thank the original author of pinterest-client: [Cao Văn Hậu](https://github.com/cvhau) for the great job in doing the package [pinterest-client](https://github.com/cvhau/pinterest-client).
+
+I hope this extra features can help someone else.
+
+Listed some modifications:
+
+* some procedures adapted to Python 3
+* modified address www.pinterest.com to www.pinterest.es as some redirection issues appeared
+* Functionalities added to:
+	- get all pins in a board from the logged user
+	- get all section in a board from the logged user
+	- get all pins in a section from the logged user
+	- small routine to fetch all boards/sections/pins from the logged user
+	
+There are many things that could be done and, maybe, I will do. 
+
+NOTE: this fork IS NOT in pypi, so forget about the installation using pip as described bellow.
+
+
+
+Following the comments from the original author of pinterest-client.
+
+
 ## pinterest-client
 A simple python client for Pinterest that support user interact with Pinterest such as simple browser.
 

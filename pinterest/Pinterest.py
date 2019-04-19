@@ -3,23 +3,28 @@ import json
 import mimetypes
 import os
 import uuid
-import requests
 import time
+import requests
 import requests.cookies
 from requests.structures import CaseInsensitiveDict
 from requests_toolbelt import MultipartEncoder
-from pinterest.exceptions import PinterestLoginFailedException, PinterestLoginRequiredException, PinterestException
+from pinterest.exceptions import PinterestLoginFailedException
+from pinterest.exceptions import PinterestLoginRequiredException
+from pinterest.exceptions import PinterestException
 from pinterest import Registry
 from pinterest.utils import url_encode
+from pinterest.utils import basestring
 
-AGENT_STRING = "Mozilla/5.0 (Windows NT 6.1; Win64; x64) " \
-               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36"
-
+AGENT_STRING = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " \
+               "AppleWebKit/537.36 (KHTML, like Gecko) " \
+               "Chrome/71.0.3578.80 Safari/537.36"
 
 class Pinterest:
-    home_page = 'https://www.pinterest.com/'
+    host = 'www.pinterest.es'
+    home_page = 'https://' + host + '/'
 
-    def __init__(self, username_or_email, password, proxies=None, agent_string=None):
+    def __init__(self, username_or_email, password,
+                 proxies=None, agent_string=None):
         self.debug = False
         self.is_logged_in = False
         self.user = None
@@ -41,33 +46,41 @@ class Pinterest:
             self.http.cookies.update(old_cookies)
         self.next_book_marks = {'pins': {}, 'boards': {}, 'people': {}}
 
-    def request(self, method, url, params=None, data=None, files=None, headers=None, ajax=False, stream=None):
+    def request(self, method, url,
+                params=None, data=None, files=None,
+                headers=None, ajax=False, stream=None):
         """
         :rtype: requests.models.Response
         """
         _headers = CaseInsensitiveDict([
-            ('Accept', 'text/html,image/webp,image/apng,*/*;q=0.8'),
+            ('Accept', 'text/html,application/xhtml+xml,application/' \
+             'xml;q=0.9,image/webp,image/apng,*/*;q=0.8'),
             ('Accept-Encoding', 'gzip, deflate'),
-            ('Accept-Language', 'en-US,en;q=0.8'),
+            ('Accept-Language', 'es-ES,es;q=0.8'),
             ('Accept-Charset', 'ISO-8859-1,utf-8;q=0.7,*;q=0.7'),
             ('Cache-Control', 'no-cache'),
             ('Connection', 'keep-alive'),
-            ('Host', 'www.pinterest.com'),
-            ('Origin', 'https://www.pinterest.com'),
+            ('Host', self.host),
+            ('Origin', self.home_page[:-1]),
             ('Referer', self.home_page),
             ('User-Agent', self.registry.get(Registry.Key.USER_AGENT))])
         if method.upper() == 'POST':
-            _headers.update([('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8')])
+            _headers.update([('Content-Type',
+                              'application/x-www-form-urlencoded; charset=UTF-8')])
         if ajax:
             _headers.update([('Accept', 'application/json')])
-            csrftoken = self.http.cookies.get('csrftoken')
+            csrftoken = self.http.cookies.get('csrftoken',
+                                              domain=self.host)
             if csrftoken:
                 _headers.update([('X-CSRFToken', csrftoken)])
             _headers.update([('X-Requested-With', 'XMLHttpRequest')])
         if headers:
             _headers.update(headers)
-        response = self.http.request(method, url, params=params, data=data, headers=_headers,
-                                     files=files, timeout=60, proxies=self.proxies, stream=stream)
+
+        response = self.http.request(method, url, params=params, data=data,
+                                     headers=_headers, files=files, timeout=60,
+                                     proxies=self.proxies, stream=stream)
+
         response.raise_for_status()
         self.registry.update(Registry.Key.COOKIES, response.cookies)
         return response
@@ -76,13 +89,16 @@ class Pinterest:
         """
         :rtype: requests.models.Response
         """
-        return self.request('GET', url=url, params=params, headers=headers, ajax=ajax, stream=stream)
+        return self.request('GET', url=url, params=params, headers=headers,
+                            ajax=ajax, stream=stream)
 
-    def post(self, url, data=None, files=None, headers=None, ajax=False, stream=None):
+    def post(self, url, data=None, files=None, headers=None, ajax=False,
+             stream=None):
         """
         :rtype: requests.models.Response
         """
-        return self.request('POST', url=url, data=data, files=files, headers=headers, ajax=ajax, stream=stream)
+        return self.request('POST', url=url, data=data, files=files,
+                            headers=headers, ajax=ajax, stream=stream)
 
     def extract_user_data(self, html_page=''):
         """
@@ -90,9 +106,9 @@ class Pinterest:
         :rtype: dict|None
         """
         if html_page:
-            s = html_page[html_page.rfind('application/json'):]
-            if s and s.rfind(self.username_or_email) > -1:
-                s = s[s.find('{'): s.find('</script>')]
+            s = html_page[html_page.rfind(b'application/json'):]
+            if s and s.rfind(self.username_or_email.encode('utf-8')) > -1:
+                s = s[s.find(b'{'): s.find(b'</script>')]
                 s = json.loads(s)
                 try:
                     user = s['context']['user']
@@ -112,24 +128,26 @@ class Pinterest:
             self.is_logged_in = True
         else:
             time.sleep(2)
-            login_page = 'https://www.pinterest.com/login/?referrer=home_page'
+            login_page = self.home_page + 'login/?referrer=home_page'
             self.get(login_page)
             time.sleep(3)
             data = url_encode({
                 'source_url': '/login/?referrer=home_page',
                 'data': json.dumps({
-                    'options': {'username_or_email': self.username_or_email, 'password': self.password},
+                    'options': {'username_or_email': self.username_or_email,
+                                'password': self.password},
                     "context": {}
                 }).replace(' ', '')
             })
-            url = 'https://www.pinterest.com/resource/UserSessionResource/create/'
+            url = self.home_page + 'resource/UserSessionResource/create/'
             result = self.post(url=url, data=data, ajax=True).json()
             error = result['resource_response']['error']
             if error is None:
                 self.user = self.extract_user_data(self.get(self.home_page).content)
                 self.is_logged_in = True
             else:
-                raise PinterestLoginFailedException('[%s Login failed] %s' % (error['http_status'], error['message']))
+                raise PinterestLoginFailedException('[%s Login failed] %s' %
+                                                    (error['http_status'], error['message']))
         return self.is_logged_in
 
     def login_required(self):
@@ -145,12 +163,13 @@ class Pinterest:
         data = url_encode({
             'source_url': '/%s/pins/' % self.user['username'],
             'data': json.dumps({
-                'options': {"filter": "all", "field_set_key": "board_picker", "allow_stale": "true", "from": "app"},
+                'options': {"filter": "all", "field_set_key": "board_picker",
+                            "allow_stale": "true", "from": "app"},
                 "context": {}
             }).replace(' ', ''),
             '_': '%s' % int(time.time() * 1000)
         })
-        url = 'https://www.pinterest.com/resource/BoardPickerBoardsResource/get/?%s' % data
+        url = self.home_page + 'resource/BoardPickerBoardsResource/get/?%s' % data
         r = self.get(url=url, ajax=True)
         result = r.json()
         boards = []
@@ -161,15 +180,17 @@ class Pinterest:
                     boards.append({
                         'id': board.get('id'),
                         'name': board.get('name'),
-                        'privacy': board.get('privacy')
+                        'section_count': board.get('section_count'),
+                        'url': board.get('url')
                     })
         except KeyError:
             pass
         return boards
 
-    def create_board(self, name, description='', category='other', privacy='public', layout='default'):
+    def create_board(self, name, description='', category='other',
+                     privacy='public', layout='default'):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/BoardResource/create/'
+        url = self.home_page + 'resource/BoardResource/create/'
         data = url_encode({
             'source_url': '/%s/boards/' % self.user['username'],
             'data': json.dumps({
@@ -194,7 +215,7 @@ class Pinterest:
 
     def follow_board(self, board_id, board_url):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/BoardFollowResource/create/'
+        url = self.home_page + 'resource/BoardFollowResource/create/'
         data = url_encode({
             'source_url': board_url,
             'data': json.dumps({
@@ -209,7 +230,7 @@ class Pinterest:
 
     def unfollow_board(self, board_id, board_url):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/BoardFollowResource/delete/'
+        url = self.home_page + 'resource/BoardFollowResource/delete/'
         data = url_encode({
             'source_url': board_url,
             'data': json.dumps({
@@ -224,7 +245,7 @@ class Pinterest:
 
     def follow_user(self, user_id, username):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/UserFollowResource/create/'
+        url = self.home_page + 'resource/UserFollowResource/create/'
         data = url_encode({
             'source_url': '/%s/' % username,
             'data': json.dumps({
@@ -239,7 +260,7 @@ class Pinterest:
 
     def unfollow_user(self, user_id, username):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/UserFollowResource/delete/'
+        url = self.home_page + 'resource/UserFollowResource/delete/'
         data = url_encode({
             'source_url': '/%s/' % username,
             'data': json.dumps({
@@ -252,9 +273,10 @@ class Pinterest:
             return True
         return False
 
-    def pin(self, board_id, image_url, description='', link='', share_facebook=False, share_twitter=False):
+    def pin(self, board_id, image_url, description='', link='',
+            share_facebook=False, share_twitter=False):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/PinResource/create/'
+        url = self.home_page + 'resource/PinResource/create/'
         data = url_encode({
             'source_url': '/pin/find/?url=%s' % url_encode(image_url),
             'data': json.dumps({
@@ -276,9 +298,10 @@ class Pinterest:
             return pin
         return None
 
-    def upload_pin(self, board_id, image_file, description='', share_facebook=False, share_twitter=False):
+    def upload_pin(self, board_id, image_file, description='',
+                   share_facebook=False, share_twitter=False):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/PinResource/create/'
+        url = self.home_page + 'resource/PinResource/create/'
         uploaded_image = self.__upload_image(image_file)
         if uploaded_image['success'] is True:
             image_url = uploaded_image['image_url']
@@ -322,16 +345,17 @@ class Pinterest:
             'Content-Type': m.content_type,
             'X-UPLOAD-SOURCE': 'pinner_uploader'
         }
-        url = 'https://www.pinterest.com/upload-image/?img=%s' % url_encode(file_name)
+        url = self.home_page + 'upload-image/?img=%s' % url_encode(file_name)
         result = self.post(url=url, data=m, headers=headers, ajax=True).json()
         return result
 
-    def repin(self, board_id, pin_id, link='', title='', description='', share_facebook=False, share_twitter=False):
+    def repin(self, board_id, pin_id, link='', title='', description='',
+              share_facebook=False, share_twitter=False):
         """
         Save this Pin to a Board. For 'save button'
         """
         self.login_required()
-        url = 'https://www.pinterest.com/resource/RepinResource/create/'
+        url = self.home_page + 'resource/RepinResource/create/'
         data = url_encode({
             'source_url': '/pin/%s/' % pin_id,
             'data': json.dumps({
@@ -356,7 +380,7 @@ class Pinterest:
 
     def like(self, pin_id):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/PinLikeResource/create/'
+        url = self.home_page + 'resource/PinLikeResource/create/'
         data = url_encode({
             'source_url': '/pin/%s/' % pin_id,
             'data': json.dumps({
@@ -371,7 +395,7 @@ class Pinterest:
 
     def undo_like(self, pin_id):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/PinLikeResource/delete/'
+        url = self.home_page + 'resource/PinLikeResource/delete/'
         data = url_encode({
             'source_url': '/pin/%s/' % pin_id,
             'data': json.dumps({
@@ -386,7 +410,7 @@ class Pinterest:
 
     def delete_pin(self, pin_id):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/PinResource/delete/'
+        url = self.home_page + 'resource/PinResource/delete/'
         data = url_encode({
             'source_url': '/pin/%s/' % pin_id,
             'data': json.dumps({
@@ -401,7 +425,7 @@ class Pinterest:
 
     def comment(self, pin_id, text):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/PinCommentResource/create/'
+        url = self.home_page + 'resource/PinCommentResource/create/'
         data = url_encode({
             'source_url': '/pin/%s/' % pin_id,
             'data': json.dumps({
@@ -421,7 +445,7 @@ class Pinterest:
 
     def delete_comment(self, pin_id, comment_id):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/PinCommentResource/delete/'
+        url = self.home_page + 'resource/PinCommentResource/delete/'
         data = url_encode({
             'source_url': '/pin/%s/' % pin_id,
             'data': json.dumps({
@@ -436,7 +460,7 @@ class Pinterest:
 
     def invite(self, board_id, board_url, user_id):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/BoardInviteResource/create/'
+        url = self.home_page + 'resource/BoardInviteResource/create/'
         data = url_encode({
             'source_url': board_url,
             'data': json.dumps({
@@ -451,7 +475,7 @@ class Pinterest:
 
     def delete_invite(self, board_id, board_url, invited_user_id, also_block=False):
         self.login_required()
-        url = 'https://www.pinterest.com/resource/BoardInviteResource/delete/'
+        url = self.home_page + 'resource/BoardInviteResource/delete/'
         data = url_encode({
             'source_url': board_url,
             'data': json.dumps({
@@ -475,15 +499,17 @@ class Pinterest:
             'q': query,
             '_': '%s' % int(time.time() * 1000)
         })
-        url = 'https://www.pinterest.com/search/%s/?%s' % (scope, q)
+        url = self.home_page + 'search/%s/?%s' % (scope, q)
         r = self.get(url=url)
-        html = r.content[r.content.find('application/json'):]
-        html = html[html.find('{'):html.find('</script>')]
+        html = r.content[r.content.find(b'application/json'):]
+        html = html[html.find(b'{'):html.find(b'</script>')]
         search_result = json.loads(html)
         results = []
         try:
-            if len(search_result['resources']['data']['BaseSearchResource']) > 0:
-                search_resource = search_result['resources']['data']['BaseSearchResource'].values()[0]
+            if search_result['resources']['data']['BaseSearchResource']:
+                print(search_result['resources']['data']['BaseSearchResource'].values())
+                search_resource = list(search_result['resources'] \
+                                       ['data']['BaseSearchResource'].values())[0]
                 results = search_resource['data']['results']
                 self.next_book_marks[scope][query] = search_resource['nextBookmark']
         except KeyError:
@@ -503,7 +529,7 @@ class Pinterest:
             }).replace(' ', ''),
             '_': '%s' % int(time.time() * 1000)
         })
-        url = 'https://www.pinterest.com/resource/SearchResource/get/?%s' % q
+        url = self.home_page + 'resource/SearchResource/get/?%s' % q
         r = self.get(url=url, ajax=True).json()
         results = []
         try:
@@ -552,25 +578,8 @@ class Pinterest:
                     'id': result['id'],
                     'description': result['description'],
                     'img': result['images']['orig']['url'],
-                    'like_count': result['like_count'],
-                    'comment_count': result['comment_count'],
-                    'repin_count': result['repin_count'],
-                    'liked_by_me': result['liked_by_me'],
                     'link': result['link'],
                     'title': result['title'],
-                    'is_video': result['is_video'],
-                    'board': {
-                        'id': result['board']['id'],
-                        'name': result['board']['name'],
-                        'url': result['board']['url'],
-                        'privacy': result['board']['privacy'],
-                        'followed_by_me': result['board']['followed_by_me'],
-                        'owner': {'id': result['board']['owner']['id']},
-                    },
-                    'pinner': {
-                        'id': result['pinner']['id'],
-                        'username': result['pinner']['username'],
-                    }
                 })
         return pins
 
@@ -591,3 +600,163 @@ class Pinterest:
                     'board_count': result['board_count'],
                 })
         return users
+
+    def sections(self, tablero):
+        """
+        Return all sections from a board
+        """
+        self.login_required()
+
+        bookmarks = []
+        sections = []
+
+        while True:
+            data = url_encode({
+                'source_url': '/%s/%s/' % (self.user['username'], tablero['name']),
+                'data': json.dumps({
+                    'options': {'bookmarks': bookmarks,
+                                'isPrefetch': 'False',
+                                'board_id': tablero['id'],
+                                'redux_normalize_feed': 'true'},
+                    "context": {}
+                }).replace(' ', ''),
+                '_': '%s' % int(time.time() * 1000)
+            })
+            url = self.home_page + 'resource/BoardSectionsResource/get/?%s' % data
+
+            r = self.get(url=url, ajax=True)
+            result = r.json()
+
+            try:
+                if result['resource_response']['data']:
+                    for section in result['resource_response']['data']:
+                        sections.append({'id': section['id'],
+                                         'title': section['title'],
+                                         'slug': section['slug']})
+            except KeyError:
+                pass
+
+            bookmarks = result['resource']['options']['bookmarks']
+            if bookmarks[0] == '-end-':
+                break
+
+        return sections
+
+    def pins_board(self, tablero):
+        """
+        Return all pines from a board (not from the sections)
+        """
+        self.login_required()
+
+        bookmarks = []
+        pins = []
+
+        while True:
+
+            data = url_encode({
+                'source_url': '/%s/%s/' % (self.user['username'],
+                                           tablero['name']),
+                'data': json.dumps({
+                    'options': {'bookmarks': bookmarks,
+                                'isPrefetch': 'False',
+                                'board_id': tablero['id'],
+                                'board_url': '/%s/%s/' % (self.user['username'],
+                                                          tablero['name']),
+                                'filter_section_pins': 'true',
+                                'redux_normalize_feed': 'true'},
+                    "context": {}
+                }).replace(' ', ''),
+                '_': '%s' % int(time.time() * 1000)
+            })
+            url = self.home_page + 'resource/BoardFeedResource/get/?%s' % data
+
+            r = self.get(url=url, ajax=True)
+            result = r.json()
+
+            try:
+                if result['resource_response']['data']:
+                    for pin in result['resource_response']['data']:
+                        pins.append({'id': pin['id'],
+                                     'description': pin['description'],
+                                     'image': pin['images']['orig']['url'],
+                                     'link': pin['link'],
+                                     'title': pin['title']})
+            except KeyError:
+                pass
+
+            bookmarks = result['resource']['options']['bookmarks']
+            if bookmarks[0] == '-end-':
+                break
+
+        return pins
+
+    def pins_section(self, tablero, seccion):
+        """
+        Return all pins of a section (from a board)
+        """
+        self.login_required()
+
+        bookmarks = []
+        pins = []
+
+        while True:
+
+            data = url_encode({
+                'source_url': '/%s/%s/%s/' % (self.user['username'],
+                                              tablero['name'],
+                                              seccion['slug']),
+                'data': json.dumps({
+                    'options': {'bookmarks': bookmarks,
+                                'isPrefetch': 'False',
+                                'section_id': seccion['id'],
+                                'redux_normalize_feed': 'false',
+                                'is_own_profile_pins': 'true'},
+                    "context": {}
+                }).replace(' ', ''),
+                '_': '%s' % int(time.time() * 1000)
+            })
+
+            url = self.home_page + 'resource/BoardSectionPinsResource/get/?%s' % data
+
+            r = self.get(url=url, ajax=True)
+            result = r.json()
+
+            try:
+                if result['resource_response']['data']:
+                    for pin in result['resource_response']['data']:
+                        pins.append({'id': pin['id'],
+                                     'description': pin['description'],
+                                     'image': pin['images']['orig']['url'],
+                                     'link': pin['link'],
+                                     'title': pin['title']})
+            except KeyError:
+                pass
+
+            bookmarks = result['resource']['options']['bookmarks']
+
+            if bookmarks[0] == '-end-':
+                break
+
+        return pins
+
+    def fetch_user_pins(self):
+        """
+        Return all boards, sections and pins from the logged user with
+        extra information.
+        """
+        boards = self.boards()
+
+        for board in boards:
+
+            pins = self.pins_board(board)
+            board['pins'] = pins
+
+            sections = self.sections(board)
+
+            for section in sections:
+                pins = self.pins_section(board, section)
+                section['pins'] = pins
+
+            board['sections'] = sections
+
+        return boards
