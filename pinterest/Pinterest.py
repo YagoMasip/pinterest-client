@@ -106,7 +106,12 @@ class Pinterest:
         :rtype: dict|None
         """
         if html_page:
-            s = html_page[html_page.rfind(b'application/json'):]
+            # s = html_page[html_page.rfind(b'application/json'):]
+            # 2019-09-12
+            # Previous sentence is failing because user data are not
+            # after the last occurence of "application/json".
+            # Searching for "jsInit1" instead required data appear and it works.
+            s = html_page[html_page.rfind(b'jsInit1'):]
             if s and s.rfind(self.username_or_email.encode('utf-8')) > -1:
                 s = s[s.find(b'{'): s.find(b'</script>')]
                 s = json.loads(s)
