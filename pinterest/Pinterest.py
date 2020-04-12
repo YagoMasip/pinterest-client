@@ -146,13 +146,45 @@ class Pinterest:
             })
             url = self.home_page + 'resource/UserSessionResource/create/'
             result = self.post(url=url, data=data, ajax=True).json()
-            error = result['resource_response']['error']
+            # By using get avoid KeyError if "error" key is not present
+            error = result['resource_response'].get('error')
             if error is None:
                 self.user = self.extract_user_data(self.get(self.home_page).content)
                 self.is_logged_in = True
             else:
                 raise PinterestLoginFailedException('[%s Login failed] %s' %
                                                     (error['http_status'], error['message']))
+        return self.is_logged_in
+    
+    def logout(self):
+        """
+        Logout from pinterest site. If OK return False
+        :rtype: bool
+        """
+        r = self.get(self.home_page)
+        self.user = self.extract_user_data(r.content)
+        if self.user:
+            self.is_logged_in = True
+            time.sleep(3)
+
+            data = url_encode({
+                'source_url': '/login/?referrer=home_page',
+                'data': json.dumps({
+                    'options': {'username_or_email': True},
+                    "context": {}
+                }).replace(' ', '')
+            })
+            url = self.home_page + 'resource/UserSessionResource/delete/'
+            result = self.post(url=url, data=data, ajax=True).json()
+            # By using get avoid KeyError if "error" key is not present
+            error = result['resource_response'].get('error')
+            if error is None:
+                self.user = self.extract_user_data(self.get(self.home_page).content)
+                self.is_logged_in = True
+            else:
+                raise PinterestLoginFailedException('[%s Login failed] %s' %
+                                                    (error['http_status'], error['message']))
+            self.is_logged_in = False
         return self.is_logged_in
 
     def login_required(self):
